@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Task Tracker</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --column-bg: #ebecf0;
+    --card-bg: #ffffff;
+    --text: #172b4d;
+    --muted: #5e6c84;
+    --border: #dfe1e6;
+    --accent: #0052cc;
+    --danger: #de350b;
+    --danger-bg: #ffebe6;
+    --high: #de350b;
+    --medium: #ff991f;
+    --low: #36b37e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 24px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  #new-task-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #new-task-btn:hover { opacity: 0.9; }
+
+  #board-message {
+    margin: 0 24px 12px;
+    padding: 10px 14px;
+    background: var(--danger-bg);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  #loading-state, #error-state {
+    margin: 40px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  #error-state { color: var(--danger); }
+  #error-state button {
+    margin-top: 12px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: 1px solid var(--danger);
+    background: #fff;
+    color: var(--danger);
+    cursor: pointer;
+  }
+
+  #columns {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 0 24px 24px;
+  }
+  .column {
+    background: var(--column-bg);
+    border-radius: 6px;
+    padding: 12px;
+    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+  }
+  .column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .column-count {
+    background: #dfe1e6;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 12px;
+  }
+  .column-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    min-height: 60px;
+  }
+  .column-body.drag-over {
+    outline: 2px dashed var(--accent);
+    outline-offset: -4px;
+    border-radius: 4px;
+  }
+  .empty-placeholder {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px 8px;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: 4px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 2px rgba(9,30,66,.25);
+    cursor: grab;
+  }
+  .card.dragging { opacity: 0.5; }
+  .card-title { font-weight: 600; font-size: 14px; margin: 0 0 4px; word-break: break-word; }
+  .card-description { font-size: 13px; color: var(--muted); margin: 0 0 8px; word-break: break-word; }
+  .card-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+  .priority-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .priority-High { background: var(--high); }
+  .priority-Medium { background: var(--medium); }
+  .priority-Low { background: var(--low); }
+  .card-assignee { color: var(--muted); }
+  .card-footer { margin-top: 8px; text-align: right; }
+  .edit-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .edit-btn:hover { background: var(--bg); }
+
+  /* Modal */
+  #modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 30, 66, 0.54);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  #modal-overlay[hidden] { display: none; }
+  #modal {
+    background: #fff;
+    border-radius: 6px;
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  #modal h2 { margin: 0 0 16px; font-size: 18px; }
+  #modal-close {
+    float: right;
+    border: none;
+    background: none;
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    color: var(--muted);
+  }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .field-error {
+    color: var(--danger);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  #form-error-banner {
+    background: var(--danger-bg);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  #form-error-banner[hidden] { display: none; }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .btn-secondary {
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 9px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Task Tracker</h1>
+      <p>Modules 1-3 baseline Kanban board</p>
+    </div>
+    <button id="new-task-btn" type="button">+ New Task</button>
+  </header>
+
+  <div id="board-message" hidden></div>
+
+  <div id="loading-state" hidden>Loading tasks&hellip;</div>
+
+  <div id="error-state" hidden>
+    <p id="error-text">Could not load tasks.</p>
+    <button id="retry-btn" type="button">Retry</button>
+  </div>
+
+  <main id="columns" data-state="loading"></main>
+
+  <!-- Create / Edit modal -->
+  <div id="modal-overlay" hidden>
+    <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button id="modal-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="modal-title">New Task</h2>
+      <div id="form-error-banner" hidden></div>
+      <form id="task-form">
+        <div class="field">
+          <label for="field-title">Title</label>
+          <input id="field-title" type="text" maxlength="200" />
+          <div class="field-error" id="title-error" hidden></div>
+        </div>
+        <div class="field">
+          <label for="field-description">Description</label>
+          <textarea id="field-description" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label for="field-status">Status</label>
+          <select id="field-status">
+            <option value="ToDo">To Do</option>
+            <option value="InProgress">In Progress</option>
+            <option value="Done">Done</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="field-priority">Priority</label>
+          <select id="field-priority">
+            <option value="High">High</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="field-assignee">Assignee</label>
+          <input id="field-assignee" type="text" placeholder="Unassigned" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn-primary" id="modal-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // Constants (Part 3.2)
+  // ---------------------------------------------------------------------
+  var API_BASE = window.TASK_TRACKER_API_BASE || "http://localhost:8000";
+  var STATUSES = ["ToDo", "InProgress", "Done"];
+  var STATUS_LABELS = { ToDo: "To Do", InProgress: "In Progress", Done: "Done" };
+  var PRIORITY_ORDER = { High: 0, Medium: 1, Low: 2 };
+
+  // ---------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------
+  var tasks = [];
+  var boardState = "loading"; // loading | ready | empty | error
+  var editingTaskId = null; // null => create mode
+  var editingOriginalTask = null; // snapshot used to diff PATCH payloads
+
+  // ---------------------------------------------------------------------
+  // DOM references
+  // ---------------------------------------------------------------------
+  var columnsEl = document.getElementById("columns");
+  var loadingEl = document.getElementById("loading-state");
+  var errorEl = document.getElementById("error-state");
+  var errorTextEl = document.getElementById("error-text");
+  var retryBtn = document.getElementById("retry-btn");
+  var boardMessageEl = document.getElementById("board-message");
+
+  var newTaskBtn = document.getElementById("new-task-btn");
+  var overlayEl = document.getElementById("modal-overlay");
+  var modalTitleEl = document.getElementById("modal-title");
+  var modalCloseBtn = document.getElementById("modal-close");
+  var modalCancelBtn = document.getElementById("modal-cancel");
+  var formEl = document.getElementById("task-form");
+  var formErrorBanner = document.getElementById("form-error-banner");
+  var titleInput = document.getElementById("field-title");
+  var titleErrorEl = document.getElementById("title-error");
+  var descriptionInput = document.getElementById("field-description");
+  var statusSelect = document.getElementById("field-status");
+  var prioritySelect = document.getElementById("field-priority");
+  var assigneeInput = document.getElementById("field-assignee");
+
+  // ---------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------
+  function escapeHtml(value) {
+    var div = document.createElement("div");
+    div.textContent = value == null ? "" : String(value);
+    return div.innerHTML;
+  }
+
+  function showBoardMessage(text) {
+    boardMessageEl.textContent = text;
+    boardMessageEl.hidden = false;
+  }
+
+  function clearBoardMessage() {
+    boardMessageEl.hidden = true;
+    boardMessageEl.textContent = "";
+  }
+
+  // ---------------------------------------------------------------------
+  // Fetch + render (Part 3.2)
+  // ---------------------------------------------------------------------
+  function fetchTasks() {
+    boardState = "loading";
+    renderBoard();
+    return fetch(API_BASE + "/tasks")
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Server responded with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        tasks = data;
+        boardState = tasks.length === 0 ? "empty" : "ready";
+        renderBoard();
+      })
+      .catch(function (err) {
+        boardState = "error";
+        errorTextEl.textContent = "Could not load tasks: " + err.message;
+        renderBoard();
+      });
+  }
+
+  function renderBoard() {
+    columnsEl.dataset.state = boardState;
+
+    if (boardState === "loading") {
+      loadingEl.hidden = false;
+      errorEl.hidden = true;
+      columnsEl.hidden = true;
+      return;
+    }
+    if (boardState === "error") {
+      loadingEl.hidden = true;
+      errorEl.hidden = false;
+      columnsEl.hidden = true;
+      return;
+    }
+
+    loadingEl.hidden = true;
+    errorEl.hidden = true;
+    columnsEl.hidden = false;
+    columnsEl.innerHTML = "";
+
+    STATUSES.forEach(function (status) {
+      columnsEl.appendChild(renderColumn(status));
+    });
+  }
+
+  function sortTasks(list) {
+    return list.slice().sort(function (a, b) {
+      var pa = PRIORITY_ORDER[a.priority];
+      var pb = PRIORITY_ORDER[b.priority];
+      if (pa !== pb) return pa - pb;
+      // Predictable secondary order: lower id first.
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  }
+
+  function renderColumn(status) {
+    var columnTasks = sortTasks(tasks.filter(function (t) { return t.status === status; }));
+
+    var column = document.createElement("section");
+    column.className = "column";
+    column.dataset.status = status;
+
+    var header = document.createElement("div");
+    header.className = "column-header";
+    header.innerHTML =
+      "<span>" + escapeHtml(STATUS_LABELS[status]) + "</span>" +
+      "<span class=\"column-count\">" + columnTasks.length + "</span>";
+    column.appendChild(header);
+
+    var body = document.createElement("div");
+    body.className = "column-body";
+    body.dataset.status = status;
+
+    if (columnTasks.length === 0) {
+      var placeholder = document.createElement("div");
+      placeholder.className = "empty-placeholder";
+      placeholder.textContent = "No tasks";
+      body.appendChild(placeholder);
+    } else {
+      columnTasks.forEach(function (task) {
+        body.appendChild(renderCard(task));
+      });
+    }
+
+    attachDropZoneHandlers(body);
+    column.appendChild(body);
+    return column;
+  }
+
+  function renderCard(task) {
+    var card = document.createElement("article");
+    card.className = "card";
+    card.draggable = true;
+    card.dataset.taskId = task.id;
+
+    var html = "<p class=\"card-title\">" + escapeHtml(task.title) + "</p>";
+    if (task.description) {
+      html += "<p class=\"card-description\">" + escapeHtml(task.description) + "</p>";
+    }
+    html +=
+      "<div class=\"card-meta\">" +
+      "<span class=\"priority-badge priority-" + escapeHtml(task.priority) + "\">" + escapeHtml(task.priority) + "</span>" +
+      "<span class=\"card-assignee\">" + escapeHtml(task.assignee || "Unassigned") + "</span>" +
+      "</div>" +
+      "<div class=\"card-footer\">" +
+      "<button type=\"button\" class=\"edit-btn\" data-task-id=\"" + escapeHtml(task.id) + "\">Edit</button>" +
+      "</div>";
+    card.innerHTML = html;
+
+    card.addEventListener("dragstart", function (event) {
+      event.dataTransfer.setData("text/plain", task.id);
+      event.dataTransfer.effectAllowed = "move";
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", function () {
+      card.classList.remove("dragging");
+    });
+
+    card.querySelector(".edit-btn").addEventListener("click", function () {
+      openModal(task);
+    });
+
+    return card;
+  }
+
+  // ---------------------------------------------------------------------
+  // Drag-and-drop (Part 3.2 interaction) — native HTML5 DnD only
+  // ---------------------------------------------------------------------
+  function attachDropZoneHandlers(bodyEl) {
+    bodyEl.addEventListener("dragover", function (event) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      bodyEl.classList.add("drag-over");
+    });
+    bodyEl.addEventListener("dragleave", function () {
+      bodyEl.classList.remove("drag-over");
+    });
+    bodyEl.addEventListener("drop", function (event) {
+      event.preventDefault();
+      bodyEl.classList.remove("drag-over");
+      var taskId = event.dataTransfer.getData("text/plain");
+      var targetStatus = bodyEl.dataset.status;
+      handleDrop(taskId, targetStatus);
+    });
+  }
+
+  function handleDrop(taskId, targetStatus) {
+    var task = tasks.find(function (t) { return t.id === taskId; });
+    if (!task) return;
+
+    if (task.status === targetStatus) {
+      // Same-column drop: do nothing, no PATCH.
+      return;
+    }
+
+    var previousStatus = task.status;
+    clearBoardMessage();
+
+    // Optimistic update.
+    task.status = targetStatus;
+    renderBoard();
+
+    fetch(API_BASE + "/tasks/" + encodeURIComponent(taskId), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: targetStatus }),
+    })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, status: response.status, body: body };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          task.status = previousStatus;
+          renderBoard();
+          var detail = result.body && result.body.detail ? result.body.detail : "The server rejected this move.";
+          showBoardMessage("Move rejected: " + detail);
+          return;
+        }
+        // Adopt the server's version of the task (in case of other server-side changes).
+        var idx = tasks.findIndex(function (t) { return t.id === taskId; });
+        if (idx !== -1) tasks[idx] = result.body;
+        renderBoard();
+      })
+      .catch(function () {
+        task.status = previousStatus;
+        renderBoard();
+        showBoardMessage("Move failed: could not reach the server.");
+      });
+  }
+
+  // ---------------------------------------------------------------------
+  // Create / edit modal (Part 3.3)
+  // ---------------------------------------------------------------------
+  function openModal(task) {
+    formErrorBanner.hidden = true;
+    formErrorBanner.textContent = "";
+    titleErrorEl.hidden = true;
+    titleErrorEl.textContent = "";
+
+    if (task) {
+      editingTaskId = task.id;
+      editingOriginalTask = task;
+      modalTitleEl.textContent = "Edit Task";
+      titleInput.value = task.title;
+      descriptionInput.value = task.description || "";
+      statusSelect.value = task.status;
+      prioritySelect.value = task.priority;
+      assigneeInput.value = task.assignee || "";
+    } else {
+      editingTaskId = null;
+      editingOriginalTask = null;
+      modalTitleEl.textContent = "New Task";
+      titleInput.value = "";
+      descriptionInput.value = "";
+      statusSelect.value = "ToDo";
+      prioritySelect.value = "Medium";
+      assigneeInput.value = "";
+    }
+
+    overlayEl.hidden = false;
+    titleInput.focus();
+  }
+
+  function closeModal() {
+    overlayEl.hidden = true;
+    editingTaskId = null;
+    editingOriginalTask = null;
+    formEl.reset();
+    formErrorBanner.hidden = true;
+    formErrorBanner.textContent = "";
+    titleErrorEl.hidden = true;
+    titleErrorEl.textContent = "";
+  }
+
+  function submitForm(event) {
+    event.preventDefault();
+
+    var rawTitle = titleInput.value;
+    var trimmedTitle = rawTitle.trim();
+
+    if (!trimmedTitle) {
+      titleErrorEl.textContent = "Title is required";
+      titleErrorEl.hidden = false;
+      return; // Do not send a request for a blank/whitespace-only title.
+    }
+    titleErrorEl.hidden = true;
+    titleErrorEl.textContent = "";
+
+    var description = descriptionInput.value; // empty string is fine as-is
+    var status = statusSelect.value;
+    var priority = prioritySelect.value;
+    var assigneeRaw = assigneeInput.value.trim();
+    var assignee = assigneeRaw === "" ? null : assigneeRaw;
+
+    var isCreate = editingTaskId === null;
+    var url = isCreate ? API_BASE + "/tasks" : API_BASE + "/tasks/" + encodeURIComponent(editingTaskId);
+    var method = isCreate ? "POST" : "PATCH";
+    var payload;
+
+    if (isCreate) {
+      payload = {
+        title: trimmedTitle,
+        description: description,
+        status: status,
+        priority: priority,
+        assignee: assignee,
+      };
+    } else {
+      // Only include fields that actually changed so an unrelated edit
+      // (e.g. description-only) never triggers status-transition validation.
+      payload = {};
+      if (trimmedTitle !== editingOriginalTask.title) payload.title = trimmedTitle;
+      if (description !== (editingOriginalTask.description || "")) payload.description = description;
+      if (status !== editingOriginalTask.status) payload.status = status;
+      if (priority !== editingOriginalTask.priority) payload.priority = priority;
+      var originalAssignee = editingOriginalTask.assignee || null;
+      if (assignee !== originalAssignee) payload.assignee = assignee;
+
+      if (Object.keys(payload).length === 0) {
+        closeModal();
+        return;
+      }
+    }
+
+    var saveBtn = document.getElementById("modal-save");
+    saveBtn.disabled = true;
+
+    fetch(url, {
+      method: method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, status: response.status, body: body };
+        });
+      })
+      .then(function (result) {
+        saveBtn.disabled = false;
+        if (!result.ok) {
+          formErrorBanner.textContent = formatServerError(result.body);
+          formErrorBanner.hidden = false;
+          // Modal stays open on rejected server validation.
+          return;
+        }
+        closeModal();
+        fetchTasks();
+      })
+      .catch(function () {
+        saveBtn.disabled = false;
+        formErrorBanner.textContent = "Could not reach the server. Please try again.";
+        formErrorBanner.hidden = false;
+      });
+  }
+
+  function formatServerError(body) {
+    if (!body) return "The server rejected this request.";
+    var detail = body.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map(function (item) {
+          return item.msg || JSON.stringify(item);
+        })
+        .join("; ");
+    }
+    return "The server rejected this request.";
+  }
+
+  // ---------------------------------------------------------------------
+  // Event wiring
+  // ---------------------------------------------------------------------
+  newTaskBtn.addEventListener("click", function () { openModal(null); });
+  retryBtn.addEventListener("click", function () { fetchTasks(); });
+  modalCloseBtn.addEventListener("click", closeModal);
+  modalCancelBtn.addEventListener("click", closeModal);
+  formEl.addEventListener("submit", submitForm);
+
+  overlayEl.addEventListener("click", function (event) {
+    if (event.target === overlayEl) closeModal();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !overlayEl.hidden) closeModal();
+  });
+
+  // ---------------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------------
+  fetchTasks();
+})();
+</script>
+</body>
+</html>
