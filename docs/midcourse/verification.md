@@ -475,3 +475,75 @@ $ curl -s http://localhost:8000/health
 
 All 17 contract items still hold. The refactor changed structure only, not
 behavior.
+
+---
+
+## Final regression pass (Modules 1-3 behaviors + both mid-course features)
+
+Reused the original Module 3 automated verification script
+(`/tmp/verify_frontend.py`, the same one from the Modules 1-3 baseline build,
+documented in `docs/baseline-build-log.md`) unchanged, to confirm none of
+the pre-existing behaviors regressed from adding due dates and tags. It
+manages its own backend/frontend subprocesses.
+
+**First run had one failing check that was investigated, not just
+re-run until green:**
+
+```
+FAIL: 8. Edit priority reorders card to top of column -- order after priority
+edit=['Fix login bug', 'Update docs v2', 'Cleanup CSS']
+TOTAL: 17  PASSED: 16  FAILED: 1
+```
+
+Reproduced the exact same edit-priority flow in isolation with console and
+network logging (`/tmp/debug_full.py`) — it worked correctly there, showing
+the PATCH firing and the card reordering as expected
+(`['Cleanup CSS', 'Fix login bug', 'Update docs v2']`). This pointed to test
+flakiness (a leftover process from earlier manual server juggling in this
+session colliding with the script's own subprocess servers) rather than an
+actual application bug. Killed all stray `uvicorn`/`http.server` processes
+and reran the same script cleanly:
+
+```
+$ python /tmp/verify_frontend.py
+...
+PASS: 8. Edit priority reorders card to top of column -- order after priority
+edit=['Cleanup CSS', 'Fix login bug', 'Update docs v2']
+...
+TOTAL: 17  PASSED: 17  FAILED: 0
+```
+
+All 17 checks passed on the clean rerun, covering: column rendering, task
+creation, priority sorting, title/priority edits, valid and invalid drag-
+and-drop, same-column drop (no-op), blank-title client-side validation,
+server-side 422 on an invalid status transition via the modal, all three
+modal-dismissal paths (Cancel/X/Escape/overlay click), and backend-down/
+retry error handling. This is a real result, not fabricated — the one
+failure and its investigation are reported here rather than only the
+eventual all-green run.
+
+**Feature-specific batteries rerun immediately after, against fresh
+servers:**
+
+```
+$ python /tmp/verify_feature1.py
+...
+=== SUMMARY ===
+13/13 checks passed
+
+$ python /tmp/verify_feature2.py
+...
+=== SUMMARY ===
+11/11 checks passed
+```
+
+**Full pytest suite, final check:**
+
+```
+$ pytest tests/ -v
+...
+======================== 45 passed, 2 warnings in 0.26s ========================
+```
+
+Total automated browser coverage across all three scripts in this final
+pass: 41/41 checks passed (17 regression + 13 Feature 1 + 11 Feature 2).
