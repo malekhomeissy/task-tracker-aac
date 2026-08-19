@@ -403,3 +403,75 @@ $ curl -s http://localhost:8000/health
 All 17 contract items check out. `git status` confirms a clean working tree
 at this point (both feature commits already made). This is the pre-refactor
 checkpoint.
+
+---
+
+## Refactor: extract the overdue predicate into a pure function
+
+**Scope (deliberately small):** `TaskResponse.is_overdue` previously
+contained the three-branch overdue logic inline inside the `@computed_field`
+property. Extracted it into a standalone pure function `_is_overdue(due_date,
+status)` in `app/models.py`, and had the property call it. No behavior
+change, no other files touched, no test rewritten — this is a "move logic,
+don't change it" refactor, not a broad cleanup.
+
+Before:
+```python
+@computed_field
+@property
+def is_overdue(self) -> bool:
+    if self.due_date is None:
+        return False
+    if self.status == TaskStatus.DONE:
+        return False
+    return self.due_date < date.today()
+```
+
+After:
+```python
+def _is_overdue(due_date: Optional[date], status: "TaskStatus") -> bool:
+    if due_date is None:
+        return False
+    if status == TaskStatus.DONE:
+        return False
+    return due_date < date.today()
+
+# ... inside TaskResponse:
+@computed_field
+@property
+def is_overdue(self) -> bool:
+    return _is_overdue(self.due_date, self.status)
+```
+
+**Full pytest rerun after the refactor:**
+```
+$ pytest tests/ -v
+...
+======================== 45 passed, 2 warnings in 0.25s ========================
+```
+Same 45/45 as before the refactor — no regressions.
+
+**Behavior contract rerun after the refactor:** all 17 items re-checked.
+Items 11-14 (due-date/overdue behaviors, which this refactor directly
+touched) were re-verified with both the pytest run above and a fresh
+Playwright pass:
+
+```
+$ python /tmp/verify_feature1.py
+...
+=== SUMMARY ===
+13/13 checks passed
+$ python /tmp/verify_feature2.py
+...
+=== SUMMARY ===
+11/11 checks passed
+```
+
+Item 1 (`GET /health`) manually re-checked:
+```
+$ curl -s http://localhost:8000/health
+{"status":"ok","timestamp":"2026-08-19T07:35:39.395529+00:00"}
+```
+
+All 17 contract items still hold. The refactor changed structure only, not
+behavior.

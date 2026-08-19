@@ -37,6 +37,19 @@ def _validate_title(value: str) -> str:
     return stripped
 
 
+def _is_overdue(due_date: Optional[date], status: "TaskStatus") -> bool:
+    """Pure predicate: a task is overdue only if it has a due date in the
+    past AND is not already Done. Completed tasks are never overdue,
+    regardless of their due date. Extracted from TaskResponse.is_overdue so
+    the rule lives in one place and is trivially unit-testable on its own.
+    """
+    if due_date is None:
+        return False
+    if status == TaskStatus.DONE:
+        return False
+    return due_date < date.today()
+
+
 def _validate_tags(value: List[str]) -> List[str]:
     if len(value) > MAX_TAGS:
         raise ValueError(f"A task may have at most {MAX_TAGS} tags")
@@ -116,14 +129,6 @@ class TaskResponse(BaseModel):
     @computed_field  # type: ignore[misc]
     @property
     def is_overdue(self) -> bool:
-        """Derived, not stored: recomputed from due_date/status on every read.
-
-        A task is overdue only if it has a due date in the past AND is not
-        already Done. Completed tasks are never overdue, regardless of their
-        due date.
-        """
-        if self.due_date is None:
-            return False
-        if self.status == TaskStatus.DONE:
-            return False
-        return self.due_date < date.today()
+        """Derived, not stored: recomputed from due_date/status on every
+        read via the shared _is_overdue() predicate."""
+        return _is_overdue(self.due_date, self.status)
