@@ -24,7 +24,8 @@ task-tracker/
 │   ├── test_tasks.py      # pytest API tests
 │   └── verify_a.py        # standalone Module 2 model verification script
 ├── docs/
-│   └── baseline-build-log.md
+│   ├── baseline-build-log.md
+│   └── midcourse/          # Mid-Course Project docs (see below)
 ├── requirements.txt
 └── README.md
 ```
@@ -114,3 +115,47 @@ This baseline intentionally does **not** include:
 
 These are out of scope for Modules 1-3 by design — see Module 1's lecture
 notes ("Task Tracker scope") for the course's own explanation of why.
+
+## Mid-Course Project
+
+Branch `mid-course-project` builds two scoped features on top of the
+Modules 1-3 baseline above, without changing its architecture:
+
+- **Due Dates + Overdue Filter** — an optional `due_date` on each task, an
+  `is_overdue` flag derived on every read (never stored) from `due_date` and
+  `status`, and an `overdue` filter on `GET /tasks`. Completed tasks are
+  never overdue. The frontend adds a due-date field to the create/edit
+  modal, a due date + Overdue badge on cards, and an "Overdue Only" filter
+  checkbox.
+- **Tags/Labels** — an optional `tags: List[str]` on each task (max 5 tags,
+  max 20 characters each, trimmed, blank tags rejected), stored directly on
+  the task with no separate tag model or table, plus a `tag` filter on
+  `GET /tasks`. The frontend adds a comma-separated tags field to the modal,
+  tag chips on cards, and a compact tag filter input.
+
+Both features preserve all existing Modules 1-3 behavior: layout, status
+columns, priority sorting, drag-and-drop, the status-transition business
+rules, and modal validation/error handling are all unchanged.
+
+### Running it
+
+Same commands as above — `uvicorn app.main:app --reload --port 8000` for the
+backend, `python -m http.server 5500` from `frontend/` for the frontend,
+`pytest tests/ -v` for the test suite (45 tests: 24 from the Modules 1-3
+baseline, plus 9 for due dates and 12 for tags).
+
+### Documentation
+
+The full AI-assisted workflow for this project — user stories, an ADR for
+the due-date/tag design decisions, a prompt log (including a weak-vs-strong
+prompt rewrite exercise), a verification log with real command output and
+two Break Tests, and a reflection — lives in `docs/midcourse/`:
+
+```
+docs/midcourse/
+├── user-stories.md
+├── mini-adr.md
+├── prompt-log.md
+├── verification.md
+└── reflection.md
+```
