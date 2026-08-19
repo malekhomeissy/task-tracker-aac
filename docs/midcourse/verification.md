@@ -348,3 +348,58 @@ $ pytest tests/ -v
 ...
 45 passed, 2 warnings in 0.26s
 ```
+
+---
+
+## Full suite result after both features
+
+```
+$ pytest tests/ -v
+...
+======================== 45 passed, 2 warnings in 0.27s ========================
+```
+
+24 original Modules 1-3 tests + 9 Feature 1 tests + 12 Feature 2 tests = 45.
+No pre-existing test was deleted, weakened, or skipped.
+
+---
+
+## Behavior contract (before refactor)
+
+Written before performing the one planned refactor, so the refactor can be
+checked against it afterward. Covers both the pre-existing Modules 1-3
+behaviors and the two new mid-course features.
+
+| # | Behavior | How to check | Evidence |
+|---|----------|---------------|----------|
+| 1 | `GET /health` returns 200 | `curl http://localhost:8000/health` | Re-run below |
+| 2 | Valid task creation returns 201 | POST `/tasks` with a valid title | pytest |
+| 3 | Blank title returns 422 | POST with `{"title":"   "}` | pytest |
+| 4 | `GET /tasks` with no matches returns 200 with `[]` | `GET /tasks?status=Done` on empty board | pytest |
+| 5 | Cards appear in the correct status column | Create tasks with different statuses | Playwright (Modules 1-3 build) |
+| 6 | Priority sorting is High -> Medium -> Low | Create 3 tasks, check column order | pytest sort logic + Playwright regression check (Feature 2 script) |
+| 7 | Valid drag persists through PATCH | Drag ToDo card to InProgress | Playwright (Modules 1-3 build) |
+| 8 | Rejected drag does not leave misleading UI state | Drag ToDo card to Done | Playwright (Modules 1-3 build) |
+| 9 | Blank modal title sends no request | Submit New Task modal with empty title | Playwright (Modules 1-3 build) |
+| 10 | Server validation error keeps modal open | Edit a ToDo task's status straight to Done | Playwright (Modules 1-3 build) |
+| 11 | `due_date` accepts a valid ISO date and rejects an invalid one | POST with valid/invalid `due_date` | pytest |
+| 12 | A task with a past `due_date` and status != Done is overdue | POST with a past due date | pytest |
+| 13 | A task with a past `due_date` and status == Done is NOT overdue | Route task to Done, check `is_overdue` | pytest (this is the exact behavior the Feature 1 Break Test guards) |
+| 14 | `GET /tasks?overdue=true` returns only overdue tasks, `[]` if none match | pytest + Playwright | pytest, Playwright |
+| 15 | Tags trim whitespace, reject blank tags, cap at 5 tags / 20 chars each | pytest | pytest (this is the exact behavior the Feature 2 Break Test guards) |
+| 16 | Tags survive a PATCH that does not touch `tags` | pytest + Playwright | pytest, Playwright |
+| 17 | `GET /tasks?tag=X` returns only tasks with that tag, `[]` if none match | pytest + Playwright | pytest, Playwright |
+
+**Verification run (before refactor):**
+
+```
+$ pytest tests/ -v
+...
+45 passed, 2 warnings in 0.27s
+$ curl -s http://localhost:8000/health
+{"status":"ok","timestamp":"2026-08-19T07:34:53.596783+00:00"}
+```
+
+All 17 contract items check out. `git status` confirms a clean working tree
+at this point (both feature commits already made). This is the pre-refactor
+checkpoint.
