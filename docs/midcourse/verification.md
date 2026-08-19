@@ -189,3 +189,162 @@ $ pytest tests/ -v
 ...
 33 passed, 2 warnings in 0.19s
 ```
+
+---
+
+## Feature 2 — Tags/Labels
+
+### Backend implementation evidence
+
+`app/models.py`: added `tags: List[str]` to `TaskCreate` (default `[]`),
+`TaskUpdate` (default `None`, so `exclude_unset` distinguishes "omitted" from
+"explicitly set"), and `TaskResponse`. Tags live directly on the task — no
+separate `Tag` model, no many-to-many table (see `mini-adr.md` for why this
+was chosen over a normalized model). A shared `_validate_tags()` helper
+(mirroring the existing `_validate_title()` pattern) trims whitespace,
+rejects blank/whitespace-only tags, and enforces `MAX_TAGS = 5` and
+`MAX_TAG_LENGTH = 20`. `app/storage.py`: `get_all_tasks()` gained a `tag`
+parameter filtering on `tag in t.tags`. `app/main.py`: `GET /tasks` gained
+the `tag` query parameter.
+
+### Focused pytest run (Feature 2 tests only)
+
+```
+$ pytest tests/test_tasks.py -v -k "tag"
+tests/test_tasks.py::test_create_task_default_tags_is_empty_list PASSED
+tests/test_tasks.py::test_create_task_with_valid_tags PASSED
+tests/test_tasks.py::test_create_task_trims_whitespace_in_tags PASSED
+tests/test_tasks.py::test_create_task_blank_tag_returns_422 PASSED
+tests/test_tasks.py::test_create_task_with_exactly_five_tags_succeeds PASSED
+tests/test_tasks.py::test_create_task_with_six_tags_returns_422 PASSED
+tests/test_tasks.py::test_create_task_tag_over_20_chars_returns_422 PASSED
+tests/test_tasks.py::test_create_task_tag_exactly_20_chars_succeeds PASSED
+tests/test_tasks.py::test_patch_update_tags PASSED
+tests/test_tasks.py::test_patch_unrelated_update_preserves_tags PASSED
+tests/test_tasks.py::test_tag_filter_returns_only_matching_tasks PASSED
+tests/test_tasks.py::test_tag_filter_no_match_returns_200_and_empty_list PASSED
+========================= 12 passed in 0.11s =========================
+```
+
+### Real off-by-one bug found and corrected during this run
+
+The first draft of `_validate_tags()` used an off-by-one bound on the tag
+count:
+
+```python
+def _validate_tags(value: List[str]) -> List[str]:
+    if len(value) >= MAX_TAGS:
+        raise ValueError(f"A task may have at most {MAX_TAGS} tags")
+    ...
+```
+
+Running the full suite against this draft (with
+`test_create_task_with_exactly_five_tags_succeeds` already written) produced
+a genuine failure — the actual first run, not staged after the fact:
+
+```
+$ pytest tests/ -v
+...
+FAILED tests/test_tasks.py::test_create_task_with_exactly_five_tags_succeeds
+E       assert 422 == 201
+1 failed, 44 passed, 2 warnings in 0.28s
+```
+
+`>=` incorrectly rejected exactly 5 tags, even though the spec says "max 5
+tags" (5 should be allowed, 6 should not). Fix: changed `>= MAX_TAGS` to
+`> MAX_TAGS`. Rerun after the fix:
+
+```
+$ pytest tests/ -v
+...
+45 passed, 2 warnings in 0.23s
+```
+
+This correction is also recorded in `docs/midcourse/user-stories.md`.
+
+### Manual/browser validation evidence
+
+Automated Playwright checks (below) directly exercise blank-tag rejection,
+the 5-tag boundary, and 20-char boundary indirectly through the same backend
+validator; the pytest run above is the direct evidence for validation rules.
+
+### Frontend — automated browser verification (Playwright, headless Chromium)
+
+Script: `/tmp/verify_feature2.py`, run against the real backend (freshly
+restarted, empty in-memory storage) and the real static frontend — no
+mocking.
+
+```
+$ python /tmp/verify_feature2.py
+[PASS] Tagged task card renders
+[PASS] Three tag chips rendered, trimmed ['backend', 'urgent', 'ui']
+[PASS] Untagged task card renders
+[PASS] No tag chips on untagged task
+[PASS] Tagged task visible when filtering by 'urgent'
+[PASS] Other tagged task hidden when filtering by 'urgent'
+[PASS] Untagged task hidden when filtering by 'urgent'
+[PASS] All tasks visible again after clearing tag filter
+[PASS] Edit modal pre-fills tags input backend, urgent, ui
+[PASS] Tags preserved on card after unrelated edit ['backend', 'urgent', 'ui']
+[PASS] Highest priority task sorts first in column (regression) High prio regression check
+
+=== SUMMARY ===
+11/11 checks passed
+```
+
+This covers: entering comma-separated tags in the modal and seeing them
+render as chips (trimmed), an untagged task showing no chips, the tag filter
+input hiding/showing the right cards (with a debounce), the edit modal
+pre-filling the tags input from the task's existing tags, tags being
+preserved on the card after an unrelated (description-only) edit, and a
+pre-existing regression check (priority sort order in a column).
+
+### Filtering evidence
+
+`test_tag_filter_returns_only_matching_tasks` and
+`test_tag_filter_no_match_returns_200_and_empty_list` (backend) plus the
+Playwright tag-filter checks above (frontend) both confirm: filtering by one
+tag returns only tasks that have that exact tag, and a filter with zero
+matches returns HTTP 200 with `[]`.
+
+### Preservation evidence
+
+`test_patch_unrelated_update_preserves_tags` (backend) and "Tags preserved on
+card after unrelated edit" (frontend, Playwright) both confirm tags survive
+a PATCH that does not touch the `tags` field.
+
+### Feature 2 Break Test
+
+Deliberately removed the blank-tag rejection from `_validate_tags()` in
+`app/models.py`:
+
+```python
+cleaned = []
+for tag in value:
+    stripped = tag.strip()
+    # (blank-tag check removed)
+    if len(stripped) > MAX_TAG_LENGTH:
+        raise ValueError(...)
+    cleaned.append(stripped)
+```
+
+```
+$ pytest tests/ -v -k tag
+...
+FAILED tests/test_tasks.py::test_create_task_blank_tag_returns_422 - assert 201 == 422
+1 failed, 11 passed, 33 deselected in 0.11s
+```
+
+The break was caught by exactly the test guarding this behavior, for the
+right reason (the endpoint accepted a whitespace-only tag and returned 201
+instead of 422). Restored the file from a pre-break backup
+(`/tmp/models_backup_f2.py`) and confirmed byte-for-byte identical
+(`diff` produced no output), then reran:
+
+```
+$ diff /tmp/models_backup_f2.py app/models.py
+(no output — files identical)
+$ pytest tests/ -v
+...
+45 passed, 2 warnings in 0.26s
+```

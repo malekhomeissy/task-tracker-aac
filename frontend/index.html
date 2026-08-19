@@ -188,6 +188,16 @@
     border: 1px solid var(--danger);
     margin-left: 6px;
   }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .tag-chip {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: #e6effc;
+    color: var(--accent);
+    border: 1px solid #c1d9f5;
+  }
   .card-footer { margin-top: 8px; text-align: right; }
   .edit-btn {
     font-size: 12px;
@@ -291,6 +301,10 @@
       <input type="checkbox" id="filter-overdue" />
       Overdue Only
     </label>
+    <label for="tag-filter-input">
+      Tag:
+      <input type="text" id="tag-filter-input" placeholder="e.g. backend" />
+    </label>
   </div>
 
   <div id="board-message" hidden></div>
@@ -344,6 +358,11 @@
           <label for="field-due-date">Due date</label>
           <input id="field-due-date" type="date" />
         </div>
+        <div class="field">
+          <label for="field-tags">Tags (comma-separated)</label>
+          <input id="field-tags" type="text" placeholder="e.g. backend, urgent" />
+          <div class="field-error" id="tags-error" hidden></div>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" id="modal-cancel">Cancel</button>
           <button type="submit" class="btn-primary" id="modal-save">Save</button>
@@ -372,6 +391,7 @@
   var editingTaskId = null; // null => create mode
   var editingOriginalTask = null; // snapshot used to diff PATCH payloads
   var overdueOnly = false; // Mid-course Feature 1 filter state
+  var tagFilter = ""; // Mid-course Feature 2 filter state
 
   // ---------------------------------------------------------------------
   // DOM references
@@ -383,6 +403,7 @@
   var retryBtn = document.getElementById("retry-btn");
   var boardMessageEl = document.getElementById("board-message");
   var overdueFilterCheckbox = document.getElementById("filter-overdue");
+  var tagFilterInput = document.getElementById("tag-filter-input");
 
   var newTaskBtn = document.getElementById("new-task-btn");
   var overlayEl = document.getElementById("modal-overlay");
@@ -398,6 +419,8 @@
   var prioritySelect = document.getElementById("field-priority");
   var assigneeInput = document.getElementById("field-assignee");
   var dueDateInput = document.getElementById("field-due-date");
+  var tagsInput = document.getElementById("field-tags");
+  var tagsErrorEl = document.getElementById("tags-error");
 
   // ---------------------------------------------------------------------
   // Helpers
@@ -418,6 +441,22 @@
     boardMessageEl.textContent = "";
   }
 
+  // Mid-course Feature 2: comma-separated input -> trimmed, non-empty tag list.
+  function parseTagsInput(raw) {
+    return raw
+      .split(",")
+      .map(function (t) { return t.trim(); })
+      .filter(function (t) { return t.length > 0; });
+  }
+
+  function tagsEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
   // ---------------------------------------------------------------------
   // Fetch + render (Part 3.2)
   // ---------------------------------------------------------------------
@@ -426,6 +465,7 @@
     renderBoard();
     var params = [];
     if (overdueOnly) params.push("overdue=true");
+    if (tagFilter) params.push("tag=" + encodeURIComponent(tagFilter));
     var url = API_BASE + "/tasks" + (params.length ? "?" + params.join("&") : "");
     return fetch(url)
       .then(function (response) {
@@ -536,6 +576,11 @@
     if (task.due_date) {
       html += "<div class=\"card-due-date" + (task.is_overdue ? " overdue" : "") + "\">Due " + escapeHtml(task.due_date) + "</div>";
     }
+    if (task.tags && task.tags.length > 0) {
+      html += "<div class=\"card-tags\">" +
+        task.tags.map(function (t) { return "<span class=\"tag-chip\">" + escapeHtml(t) + "</span>"; }).join("") +
+        "</div>";
+    }
     html +=
       "<div class=\"card-footer\">" +
       "<button type=\"button\" class=\"edit-btn\" data-task-id=\"" + escapeHtml(task.id) + "\">Edit</button>" +
@@ -633,6 +678,8 @@
     formErrorBanner.textContent = "";
     titleErrorEl.hidden = true;
     titleErrorEl.textContent = "";
+    tagsErrorEl.hidden = true;
+    tagsErrorEl.textContent = "";
 
     if (task) {
       editingTaskId = task.id;
@@ -644,6 +691,7 @@
       prioritySelect.value = task.priority;
       assigneeInput.value = task.assignee || "";
       dueDateInput.value = task.due_date || "";
+      tagsInput.value = (task.tags || []).join(", ");
     } else {
       editingTaskId = null;
       editingOriginalTask = null;
@@ -654,6 +702,7 @@
       prioritySelect.value = "Medium";
       assigneeInput.value = "";
       dueDateInput.value = "";
+      tagsInput.value = "";
     }
 
     overlayEl.hidden = false;
@@ -669,6 +718,8 @@
     formErrorBanner.textContent = "";
     titleErrorEl.hidden = true;
     titleErrorEl.textContent = "";
+    tagsErrorEl.hidden = true;
+    tagsErrorEl.textContent = "";
   }
 
   function submitForm(event) {
@@ -692,6 +743,7 @@
     var assignee = assigneeRaw === "" ? null : assigneeRaw;
     var dueDateRaw = dueDateInput.value; // "" when the date input is cleared
     var dueDate = dueDateRaw === "" ? null : dueDateRaw;
+    var tags = parseTagsInput(tagsInput.value);
 
     var isCreate = editingTaskId === null;
     var url = isCreate ? API_BASE + "/tasks" : API_BASE + "/tasks/" + encodeURIComponent(editingTaskId);
@@ -706,6 +758,7 @@
         priority: priority,
         assignee: assignee,
         due_date: dueDate,
+        tags: tags,
       };
     } else {
       // Only include fields that actually changed so an unrelated edit
@@ -719,6 +772,8 @@
       if (assignee !== originalAssignee) payload.assignee = assignee;
       var originalDueDate = editingOriginalTask.due_date || null;
       if (dueDate !== originalDueDate) payload.due_date = dueDate;
+      var originalTags = editingOriginalTask.tags || [];
+      if (!tagsEqual(tags, originalTags)) payload.tags = tags;
 
       if (Object.keys(payload).length === 0) {
         closeModal();
@@ -779,6 +834,14 @@
   overdueFilterCheckbox.addEventListener("change", function () {
     overdueOnly = overdueFilterCheckbox.checked;
     fetchTasks();
+  });
+  var tagFilterDebounce = null;
+  tagFilterInput.addEventListener("input", function () {
+    clearTimeout(tagFilterDebounce);
+    tagFilterDebounce = setTimeout(function () {
+      tagFilter = tagFilterInput.value.trim();
+      fetchTasks();
+    }, 300);
   });
   modalCloseBtn.addEventListener("click", closeModal);
   modalCancelBtn.addEventListener("click", closeModal);

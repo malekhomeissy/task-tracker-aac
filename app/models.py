@@ -7,11 +7,13 @@ client input; they are generated and owned by app/storage.py.
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 MAX_TITLE_LENGTH = 200
+MAX_TAGS = 5
+MAX_TAG_LENGTH = 20
 
 
 class TaskStatus(str, Enum):
@@ -35,6 +37,20 @@ def _validate_title(value: str) -> str:
     return stripped
 
 
+def _validate_tags(value: List[str]) -> List[str]:
+    if len(value) > MAX_TAGS:
+        raise ValueError(f"A task may have at most {MAX_TAGS} tags")
+    cleaned = []
+    for tag in value:
+        stripped = tag.strip()
+        if not stripped:
+            raise ValueError("Tags cannot be blank or whitespace-only")
+        if len(stripped) > MAX_TAG_LENGTH:
+            raise ValueError(f"Each tag must be {MAX_TAG_LENGTH} characters or fewer")
+        cleaned.append(stripped)
+    return cleaned
+
+
 class TaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -44,11 +60,17 @@ class TaskCreate(BaseModel):
     priority: TaskPriority = TaskPriority.MEDIUM
     assignee: Optional[str] = None
     due_date: Optional[date] = None
+    tags: List[str] = Field(default_factory=list)
 
     @field_validator("title")
     @classmethod
     def validate_title(cls, value: str) -> str:
         return _validate_title(value)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: List[str]) -> List[str]:
+        return _validate_tags(value)
 
 
 class TaskUpdate(BaseModel):
@@ -60,6 +82,7 @@ class TaskUpdate(BaseModel):
     priority: Optional[TaskPriority] = None
     assignee: Optional[str] = None
     due_date: Optional[date] = None
+    tags: Optional[List[str]] = None
 
     @field_validator("title")
     @classmethod
@@ -67,6 +90,13 @@ class TaskUpdate(BaseModel):
         if value is None:
             return value
         return _validate_title(value)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return value
+        return _validate_tags(value)
 
 
 class TaskResponse(BaseModel):
@@ -79,6 +109,7 @@ class TaskResponse(BaseModel):
     priority: TaskPriority
     assignee: Optional[str] = None
     due_date: Optional[date] = None
+    tags: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
