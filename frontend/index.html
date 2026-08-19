@@ -47,6 +47,31 @@
   }
   #new-task-btn:hover { opacity: 0.9; }
 
+  #filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 24px 12px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #filter-bar label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #filter-bar input[type="checkbox"] { cursor: pointer; }
+  #tag-filter-input {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    width: 140px;
+  }
+
   #board-message {
     margin: 0 24px 12px;
     padding: 10px 14px;
@@ -148,6 +173,21 @@
   .priority-Medium { background: var(--medium); }
   .priority-Low { background: var(--low); }
   .card-assignee { color: var(--muted); }
+  .card-due-date { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .card-due-date.overdue { color: var(--danger); font-weight: 600; }
+  .overdue-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: var(--danger-bg);
+    color: var(--danger);
+    border: 1px solid var(--danger);
+    margin-left: 6px;
+  }
   .card-footer { margin-top: 8px; text-align: right; }
   .edit-btn {
     font-size: 12px;
@@ -246,6 +286,13 @@
     <button id="new-task-btn" type="button">+ New Task</button>
   </header>
 
+  <div id="filter-bar">
+    <label for="filter-overdue">
+      <input type="checkbox" id="filter-overdue" />
+      Overdue Only
+    </label>
+  </div>
+
   <div id="board-message" hidden></div>
 
   <div id="loading-state" hidden>Loading tasks&hellip;</div>
@@ -293,6 +340,10 @@
           <label for="field-assignee">Assignee</label>
           <input id="field-assignee" type="text" placeholder="Unassigned" />
         </div>
+        <div class="field">
+          <label for="field-due-date">Due date</label>
+          <input id="field-due-date" type="date" />
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" id="modal-cancel">Cancel</button>
           <button type="submit" class="btn-primary" id="modal-save">Save</button>
@@ -320,6 +371,7 @@
   var boardState = "loading"; // loading | ready | empty | error
   var editingTaskId = null; // null => create mode
   var editingOriginalTask = null; // snapshot used to diff PATCH payloads
+  var overdueOnly = false; // Mid-course Feature 1 filter state
 
   // ---------------------------------------------------------------------
   // DOM references
@@ -330,6 +382,7 @@
   var errorTextEl = document.getElementById("error-text");
   var retryBtn = document.getElementById("retry-btn");
   var boardMessageEl = document.getElementById("board-message");
+  var overdueFilterCheckbox = document.getElementById("filter-overdue");
 
   var newTaskBtn = document.getElementById("new-task-btn");
   var overlayEl = document.getElementById("modal-overlay");
@@ -344,6 +397,7 @@
   var statusSelect = document.getElementById("field-status");
   var prioritySelect = document.getElementById("field-priority");
   var assigneeInput = document.getElementById("field-assignee");
+  var dueDateInput = document.getElementById("field-due-date");
 
   // ---------------------------------------------------------------------
   // Helpers
@@ -370,7 +424,10 @@
   function fetchTasks() {
     boardState = "loading";
     renderBoard();
-    return fetch(API_BASE + "/tasks")
+    var params = [];
+    if (overdueOnly) params.push("overdue=true");
+    var url = API_BASE + "/tasks" + (params.length ? "?" + params.join("&") : "");
+    return fetch(url)
       .then(function (response) {
         if (!response.ok) {
           throw new Error("Server responded with status " + response.status);
@@ -465,7 +522,9 @@
     card.draggable = true;
     card.dataset.taskId = task.id;
 
-    var html = "<p class=\"card-title\">" + escapeHtml(task.title) + "</p>";
+    var html = "<p class=\"card-title\">" + escapeHtml(task.title) +
+      (task.is_overdue ? "<span class=\"overdue-badge\">Overdue</span>" : "") +
+      "</p>";
     if (task.description) {
       html += "<p class=\"card-description\">" + escapeHtml(task.description) + "</p>";
     }
@@ -473,7 +532,11 @@
       "<div class=\"card-meta\">" +
       "<span class=\"priority-badge priority-" + escapeHtml(task.priority) + "\">" + escapeHtml(task.priority) + "</span>" +
       "<span class=\"card-assignee\">" + escapeHtml(task.assignee || "Unassigned") + "</span>" +
-      "</div>" +
+      "</div>";
+    if (task.due_date) {
+      html += "<div class=\"card-due-date" + (task.is_overdue ? " overdue" : "") + "\">Due " + escapeHtml(task.due_date) + "</div>";
+    }
+    html +=
       "<div class=\"card-footer\">" +
       "<button type=\"button\" class=\"edit-btn\" data-task-id=\"" + escapeHtml(task.id) + "\">Edit</button>" +
       "</div>";
@@ -580,6 +643,7 @@
       statusSelect.value = task.status;
       prioritySelect.value = task.priority;
       assigneeInput.value = task.assignee || "";
+      dueDateInput.value = task.due_date || "";
     } else {
       editingTaskId = null;
       editingOriginalTask = null;
@@ -589,6 +653,7 @@
       statusSelect.value = "ToDo";
       prioritySelect.value = "Medium";
       assigneeInput.value = "";
+      dueDateInput.value = "";
     }
 
     overlayEl.hidden = false;
@@ -625,6 +690,8 @@
     var priority = prioritySelect.value;
     var assigneeRaw = assigneeInput.value.trim();
     var assignee = assigneeRaw === "" ? null : assigneeRaw;
+    var dueDateRaw = dueDateInput.value; // "" when the date input is cleared
+    var dueDate = dueDateRaw === "" ? null : dueDateRaw;
 
     var isCreate = editingTaskId === null;
     var url = isCreate ? API_BASE + "/tasks" : API_BASE + "/tasks/" + encodeURIComponent(editingTaskId);
@@ -638,6 +705,7 @@
         status: status,
         priority: priority,
         assignee: assignee,
+        due_date: dueDate,
       };
     } else {
       // Only include fields that actually changed so an unrelated edit
@@ -649,6 +717,8 @@
       if (priority !== editingOriginalTask.priority) payload.priority = priority;
       var originalAssignee = editingOriginalTask.assignee || null;
       if (assignee !== originalAssignee) payload.assignee = assignee;
+      var originalDueDate = editingOriginalTask.due_date || null;
+      if (dueDate !== originalDueDate) payload.due_date = dueDate;
 
       if (Object.keys(payload).length === 0) {
         closeModal();
@@ -706,6 +776,10 @@
   // ---------------------------------------------------------------------
   newTaskBtn.addEventListener("click", function () { openModal(null); });
   retryBtn.addEventListener("click", function () { fetchTasks(); });
+  overdueFilterCheckbox.addEventListener("change", function () {
+    overdueOnly = overdueFilterCheckbox.checked;
+    fetchTasks();
+  });
   modalCloseBtn.addEventListener("click", closeModal);
   modalCancelBtn.addEventListener("click", closeModal);
   formEl.addEventListener("submit", submitForm);

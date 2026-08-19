@@ -5,11 +5,11 @@ Server-managed fields (id, created_at, updated_at) are never accepted from
 client input; they are generated and owned by app/storage.py.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, computed_field, field_validator
 
 MAX_TITLE_LENGTH = 200
 
@@ -43,6 +43,7 @@ class TaskCreate(BaseModel):
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
     assignee: Optional[str] = None
+    due_date: Optional[date] = None
 
     @field_validator("title")
     @classmethod
@@ -58,6 +59,7 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     assignee: Optional[str] = None
+    due_date: Optional[date] = None
 
     @field_validator("title")
     @classmethod
@@ -76,5 +78,21 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     priority: TaskPriority
     assignee: Optional[str] = None
+    due_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_overdue(self) -> bool:
+        """Derived, not stored: recomputed from due_date/status on every read.
+
+        A task is overdue only if it has a due date in the past AND is not
+        already Done. Completed tasks are never overdue, regardless of their
+        due date.
+        """
+        if self.due_date is None:
+            return False
+        if self.status == TaskStatus.DONE:
+            return False
+        return self.due_date < date.today()
