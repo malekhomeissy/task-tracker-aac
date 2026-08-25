@@ -109,12 +109,14 @@ This baseline intentionally does **not** include:
 
 - Authentication or user accounts
 - A database (storage is in-memory only)
-- Docker or any deployment configuration
 - Real-time sync, WebSockets, or notifications
 - A frontend framework or build system (React, Vue, TypeScript, npm, etc.)
 
 These are out of scope for Modules 1-3 by design — see Module 1's lecture
-notes ("Task Tracker scope") for the course's own explanation of why.
+notes ("Task Tracker scope") for the course's own explanation of why. (A
+Docker image and a CI workflow were added later, in the Final Project —
+see below; they wrap this same in-memory, auth-less baseline rather than
+changing it.)
 
 ## Mid-Course Project
 
@@ -160,3 +162,78 @@ docs/midcourse/
 ├── verification.md
 └── reflection.md
 ```
+
+## Final Project
+
+Branch reviewed: `final-project`
+
+### What this submission demonstrates
+
+- The existing Task Tracker app still runs inside the intended course
+  scope — no new product features, no changes to `app/`'s behavior.
+- CI (`.github/workflows/ci.yml`) runs the pytest suite on every push and
+  on pull requests targeting `main`.
+- A `Dockerfile`/`.dockerignore` are in place for a non-root, multi-stage
+  image that serves `/health`; the exact build/run/verify commands are in
+  `docs/release-evidence.md`, along with an honest note on the one part
+  (an actual `docker build`/`docker run`) that could not be executed by
+  the AI agent in this session and still needs to be run and confirmed on
+  a real machine before this is fully evidence-complete.
+- AI review, security, governance, and ownership evidence all live under
+  `docs/` (see "Evidence files" below).
+
+### How to run locally
+
+```bash
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+### How to run tests
+
+```bash
+pytest tests/ -v
+```
+
+### How to run with Docker
+
+```bash
+docker build -t task-tracker:dev .
+docker run --rm -d -p 8000:8000 --name tt-dev task-tracker:dev
+curl -i http://localhost:8000/health
+```
+
+### Evidence files
+
+- `docs/release-evidence.md`
+- `docs/final-ai-review.md`
+- `docs/security-review.md`
+- `docs/governance-worksheet.md`
+- `docs/ai-usage.md`
+- `docs/ai-playbook.md`
+- `docs/decisions/comments-feature-plan.md`
+- `docs/architecture.md` (with `architecture-A.md`/`-B.md`/`-C.md`)
+
+### AI assistance summary
+
+AI helped draft or review: CI workflow, Dockerfile, documentation
+(`docs/`), security review, and the facilitator-reported null-title
+debugging fix.
+
+I verified the work by: running the full pytest suite before and after
+each change, reading every generated file against the actual repo instead
+of trusting the draft, curling the running backend to check real status
+codes and behavior, and grading every AI-produced finding/comment
+(Valid/False Positive/Noise; Useful/Noise/Wrong) instead of accepting it.
+
+One AI suggestion I rejected or corrected: an AI code-review comment
+noted that `description` has the same unguarded-explicit-null gap that
+the facilitator caught for `title`, and the natural next step would have
+been to apply the same one-line fix. I chose not to apply it in this pass
+— it's recorded as finding M-6 in `docs/security-review.md` instead —
+because this project's ground rules scope `app/` changes to what's
+already explained and explicitly decided on, not whatever an AI review
+happens to notice along the way. Full reasoning in
+`docs/final-ai-review.md`.

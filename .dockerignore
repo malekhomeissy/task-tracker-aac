@@ -1,0 +1,33 @@
+.git
+.github
+
+# Local environment / secrets — must never be baked into the image
+.env
+.env.*
+*.pem
+*.key
+
+# Virtualenvs
+venv/
+.venv/
+env/
+
+# Python build/test artifacts
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Not needed at runtime — the image only serves the backend API
+frontend/
+tests/
+docs/
+
+# OS/editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Repo docs not needed in the image
+README.md
+AGENTS.md
