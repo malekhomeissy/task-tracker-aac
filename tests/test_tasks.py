@@ -167,6 +167,24 @@ def test_patch_invalid_title_returns_422(client, created_task):
     assert response.status_code == 422
 
 
+def test_patch_null_title_returns_422(client, created_task):
+    # Facilitator-reported gap: an explicit `{"title": null}` PATCH must be
+    # rejected the same way a blank/whitespace title is, and must not
+    # overwrite the task's existing title. Distinct from
+    # test_patch_invalid_title_returns_422 (whitespace-only string) --
+    # this covers the explicit-null case specifically, which is a
+    # different code path (the field is present in the request with a
+    # JSON `null` value, not an empty/whitespace string).
+    original_title = created_task["title"]
+    response = client.patch(f"/tasks/{created_task['id']}", json={"title": None})
+    assert response.status_code == 422
+
+    # Confirm the invalid null value was not persisted.
+    after = client.get(f"/tasks/{created_task['id']}")
+    assert after.status_code == 200
+    assert after.json()["title"] == original_title
+
+
 def test_patch_valid_transition_todo_to_inprogress_returns_200(client, created_task):
     assert created_task["status"] == "ToDo"
     response = client.patch(f"/tasks/{created_task['id']}", json={"status": "InProgress"})

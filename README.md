@@ -141,8 +141,9 @@ rules, and modal validation/error handling are all unchanged.
 
 Same commands as above — `uvicorn app.main:app --reload --port 8000` for the
 backend, `python -m http.server 5500` from `frontend/` for the frontend,
-`pytest tests/ -v` for the test suite (45 tests: 24 from the Modules 1-3
-baseline, plus 9 for due dates and 12 for tags).
+`pytest tests/ -v` for the test suite (46 tests: 24 from the Modules 1-3
+baseline, 9 for due dates, 12 for tags, plus 1 regression test added for a
+facilitator-reported fix — see `docs/midcourse/verification.md`).
 
 ### Documentation
 

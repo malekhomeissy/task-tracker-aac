@@ -170,3 +170,42 @@ case that the real Prompt 1.2 mistake above actually missed). Notably, this
 stronger prompt names the exact Done-task edge case that the actual weaker
 Prompt 1.2 above failed to specify — written after the fact, with the
 benefit of hindsight from that real mistake.
+
+---
+
+## Resubmission fix: facilitator-reported null-title gap
+
+**Purpose:** fix exactly one facilitator-reported defect (explicit
+`{"title": null}` on PATCH was accepted and persisted) without touching
+anything else.
+
+**Prompt:** "Inspect `app/models.py`, `app/main.py`, `app/storage.py`, and
+`tests/test_tasks.py`. Reproduce `PATCH {"title": null}` against the
+running app before changing anything, and record the actual status code
+and response. Identify exactly why it currently succeeds. Then fix it at
+the `TaskUpdate` Pydantic validation boundary so an explicit null title is
+rejected with 422, while an omitted title still works as a valid partial
+update. Add a dedicated test named `test_patch_null_title_returns_422`
+(don't just edit the existing whitespace-title test). Prove the new test
+actually catches the bug with a Break Test: temporarily revert only the
+fix, confirm the test fails for the right reason, restore, confirm it
+passes again. Run the full suite before and after. Do not redesign
+anything or touch unrelated code."
+
+**AI response summary:** reproduced the bug first (`curl PATCH
+{"title": null}` → 200, null persisted, confirmed via a follow-up GET).
+Root cause: `TaskUpdate.validate_title`'s `if value is None: return value`
+branch was written to let PATCH omit `title`, but Pydantic v2 only runs a
+field validator when the client actually supplies that field — an omitted
+field never reaches the validator at all — so the same branch silently
+accepted an explicit `null` too. Verified that claim directly with a small
+standalone Pydantic probe before touching production code. Fixed by
+changing that branch to `raise ValueError(...)` instead of returning the
+value. Added the dedicated regression test, ran a real Break Test (revert →
+real `assert 200 == 422` failure → restore → pass), and reran the full
+suite (45 → 46 passed).
+
+**Outcome:** accepted as-is; matches the facilitator's requested contract
+exactly (omitted valid, whitespace invalid, empty invalid, explicit null
+invalid) with no unrelated changes. Full evidence in
+`docs/midcourse/verification.md`, "Facilitator Resubmission Fix" section.

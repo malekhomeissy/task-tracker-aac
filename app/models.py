@@ -99,9 +99,17 @@ class TaskUpdate(BaseModel):
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, value: Optional[str]) -> Optional[str]:
+    def validate_title(cls, value: Optional[str]) -> str:
+        # This validator only runs when the client actually included "title"
+        # in the request body -- Pydantic v2 skips field validators for
+        # fields that fall back to their default (validate_default is not
+        # set), so an *omitted* title never reaches here and PATCH stays
+        # a valid partial update. An explicit `"title": null`, however,
+        # does reach here, and must be rejected the same way any other
+        # invalid title is: a normal 422, not a silent write of an
+        # invalid value.
         if value is None:
-            return value
+            raise ValueError("Title cannot be explicitly set to null")
         return _validate_title(value)
 
     @field_validator("tags")

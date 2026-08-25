@@ -547,3 +547,137 @@ $ pytest tests/ -v
 
 Total automated browser coverage across all three scripts in this final
 pass: 41/41 checks passed (17 regression + 13 Feature 1 + 11 Feature 2).
+
+---
+
+## Facilitator Resubmission Fix — Explicit Null Title
+
+**Facilitator-reported gap:** sending an explicit `null` for `title` in a
+task update (`PATCH {"title": null}`) was accepted with a 200 response and
+the `null` value was persisted. The existing test
+(`test_patch_invalid_title_returns_422`) only covered a whitespace-only
+title (`"   "`), not the explicit-null case, so this gap was not caught by
+the test suite.
+
+**Original reproduction (before any fix, against the running app):**
+
+```
+$ curl -s -X POST http://localhost:8000/tasks -d '{"title": "Reproduce null title bug"}'
+{"id":"edf59ebb...","title":"Reproduce null title bug", ...}
+
+$ curl -s -i -X PATCH http://localhost:8000/tasks/edf59ebb... -d '{"title": null}'
+HTTP/1.1 200 OK
+{"id":"edf59ebb...","title":null,"description":"","status":"ToDo", ...}
+
+$ curl -s -i http://localhost:8000/tasks/edf59ebb...
+HTTP/1.1 200 OK
+{"id":"edf59ebb...","title":null, ...}
+```
+
+Confirmed exactly as reported: 200 OK, and the invalid `null` title was
+persisted (visible on a subsequent GET), even though `TaskResponse.title`
+is typed as a plain `str`.
+
+**Root cause:** `TaskUpdate.validate_title` (in `app/models.py`) special-
+cased `None` to pass through unchanged:
+
+```python
+@field_validator("title")
+@classmethod
+def validate_title(cls, value):
+    if value is None:
+        return value          # <-- bug: also matches explicit null
+    return _validate_title(value)
+```
+
+This was written to allow PATCH to omit `title` (partial update). But in
+Pydantic v2, a field validator only runs when the client actually included
+that field in the request body — an *omitted* field falls back to its
+default (`None`) without ever invoking the validator (confirmed directly:
+`TaskUpdate()` never triggers the validator, `TaskUpdate.model_validate({"title": None})`
+does, and the latter lands in `model_fields_set`). So the `if value is None:
+return value` branch, intended only for "omitted," was actually the code
+path hit for "explicitly sent as null" too — both looked identical by the
+time the validator ran. `storage.update_task` then included `title: None`
+in the applied changes (since `title` was in `model_fields_set`), and
+`existing.model_copy(update=changes)` — which does not re-validate —
+happily wrote `None` into a `TaskResponse.title: str` field.
+
+**Exact fix** (`app/models.py`, `TaskUpdate.validate_title`): changed the
+`None` branch from "pass through unchanged" to "reject with a normal
+validation error":
+
+```python
+@field_validator("title")
+@classmethod
+def validate_title(cls, value: Optional[str]) -> str:
+    if value is None:
+        raise ValueError("Title cannot be explicitly set to null")
+    return _validate_title(value)
+```
+
+Because omitted fields never reach this validator at all, this only
+rejects an *explicit* `null` — omitting `title` from a PATCH body remains
+completely unaffected. No other file needed to change; the fix is entirely
+at the Pydantic request-model validation boundary, per the intended
+architecture.
+
+**Dedicated regression test** (`tests/test_tasks.py`,
+`test_patch_null_title_returns_422`, added as a new test, not a rewrite of
+the existing whitespace test): creates a task, PATCHes it with exactly
+`{"title": None}`, asserts 422, then GETs the task again and asserts its
+title is unchanged from before the PATCH (i.e. the invalid null was not
+persisted).
+
+**Break Test:** temporarily reverted only the null-title protection back to
+the buggy `if value is None: return value` line, backing up the pre-change
+file first.
+
+```
+$ pytest tests/test_tasks.py::test_patch_null_title_returns_422 -v
+...
+FAILED tests/test_tasks.py::test_patch_null_title_returns_422 - assert 200 == 422
+```
+
+The test failed for exactly the right reason. Restored the file from the
+pre-break backup and confirmed byte-for-byte identical (`diff` produced no
+output):
+
+```
+$ diff /tmp/models_backup_nulltitle.py app/models.py
+(no output — files identical)
+$ pytest tests/test_tasks.py::test_patch_null_title_returns_422 -v
+...
+PASSED
+$ pytest tests/ -v
+...
+======================== 46 passed, 2 warnings in 0.37s ========================
+```
+
+**After-fix manual verification (running app), all four required cases:**
+
+```
+$ curl -s -i -X PATCH http://localhost:8000/tasks/{id} -d '{"title": null}'
+HTTP/1.1 422 Unprocessable Entity
+{"detail":[{"type":"value_error","loc":["body","title"],"msg":"Value error, Title cannot be explicitly set to null", ...}]}
+
+$ curl -s -i -X PATCH http://localhost:8000/tasks/{id} -d '{"title": "   "}'
+HTTP/1.1 422 Unprocessable Entity
+{"detail":[{"type":"value_error","loc":["body","title"],"msg":"Value error, Title is required and cannot be blank", ...}]}
+
+$ curl -s -i -X PATCH http://localhost:8000/tasks/{id} -d '{"title": "Updated valid title"}'
+HTTP/1.1 200 OK
+{"id":"...","title":"Updated valid title", ...}
+
+$ curl -s -i -X PATCH http://localhost:8000/tasks/{id} -d '{"priority": "High"}'
+HTTP/1.1 200 OK
+{"id":"...","title":"Post-fix reproduction task","priority":"High", ...}   # title untouched
+
+$ curl -s -i -X PATCH http://localhost:8000/tasks/{id} -d '{}'
+HTTP/1.1 200 OK   # empty partial PATCH still valid, no fields changed
+```
+
+**Previous full-suite result (before this fix):** `45 passed, 2 warnings`.
+
+**Final full-suite result (after this fix):** `46 passed, 2 warnings in 0.37s`
+— the one new test, no existing test deleted or weakened.
