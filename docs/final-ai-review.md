@@ -114,9 +114,8 @@ architecture-strategy comparison all include findings and mistakes I
 didn't accept at face value — including AI outputs I deliberately graded
 as wrong or overconfident — because the point of this project was
 demonstrating that judgment, not producing documents that look thorough.
-Nothing in this submission asserts a test result, a command's output, or
-a security finding that wasn't actually run or checked during this
-session. I'm comfortable submitting this repo as my own work because the
-record of what AI drafted versus what I verified, corrected, or rejected
-is itself part of the submission, not something I'm asserting after the
-fact.
+Nothing in this submission asserts a test result, command output, or security
+finding that was not actually run or checked during the project. I'm
+comfortable submitting this repo as my own work because the record of what
+AI drafted versus what I verified, corrected, or rejected is itself part of
+the submission, not something I'm asserting after the fact.

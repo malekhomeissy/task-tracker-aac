@@ -174,11 +174,10 @@ Branch reviewed: `final-project`
 - CI (`.github/workflows/ci.yml`) runs the pytest suite on every push and
   on pull requests targeting `main`.
 - A `Dockerfile`/`.dockerignore` are in place for a non-root, multi-stage
-  image that serves `/health`; the exact build/run/verify commands are in
-  `docs/release-evidence.md`, along with an honest note on the one part
-  (an actual `docker build`/`docker run`) that could not be executed by
-  the AI agent in this session and still needs to be run and confirmed on
-  a real machine before this is fully evidence-complete.
+  image that serves `/health`. The image was built and run on macOS,
+  `/health` returned HTTP 200, and `docker exec tt-dev whoami` returned
+  `app`; the exact commands and results are recorded in
+  `docs/release-evidence.md`.
 - AI review, security, governance, and ownership evidence all live under
   `docs/` (see "Evidence files" below).
 

@@ -1,9 +1,9 @@
 # Release Evidence
 
-Real commands and real output only. Two items in this document could not be
-executed directly by the AI agent in the environment it had access to, and
-that limitation is recorded honestly below rather than faked — see
-"Environment limitations" at the end.
+Real commands and real output only. Docker runtime verification was completed
+manually on the project owner's Mac. The only evidence still dependent on a
+remote service is the GitHub Actions run, which can exist only after the
+`final-project` branch is pushed.
 
 ## Baseline
 
@@ -67,38 +67,36 @@ that limitation is recorded honestly below rather than faked — see
 
 ## Docker evidence
 
+Manual runtime verification was completed on the project owner's Mac on
+2026-08-25 using Docker Desktop. The commands below are the commands that
+were actually run.
+
+- Docker version: `Docker version 29.7.2, build a7dcaa6`
 - Build command: `docker build -t task-tracker:dev .`
+  - Result: **PASS** — the image built successfully and was tagged
+    `task-tracker:dev`.
 - Run command:
   `docker run --rm -d -p 8000:8000 --name tt-dev task-tracker:dev`
-- `/health` check: `curl -i http://localhost:8000/health` (expect `200`)
-- Non-root check: `docker exec tt-dev whoami` (expect `app`, not `root`) —
-  the Dockerfile creates a dedicated `app` user (`useradd --create-home
-  --shell /usr/sbin/nologin app`), `chown`s `/app` to it, and runs
-  `USER app` before the final `CMD`.
-- No-baked-secrets check: `.dockerignore` explicitly excludes `.env`,
-  `.env.*`, `*.pem`, `*.key`, `.git`, and both virtualenv directory names
-  (`venv/`, `.venv/`). The image's `COPY` instructions only copy
-  `requirements.txt` and `app/` — `frontend/`, `tests/`, and `docs/` are
-  never copied into the image at all (verified by reading the `Dockerfile`
-  directly: it has exactly two `COPY` instructions, `COPY requirements.txt
-  .` in the builder stage and `COPY app/ ./app/` in the runtime stage).
+  - Result: **PASS** — Docker returned a container ID and started the
+    container.
+- `/health` check: `curl -i http://localhost:8000/health`
+  - Result: **PASS** — `HTTP/1.1 200 OK`, served by Uvicorn with an
+    `application/json` body containing `{"status":"ok", ...}`.
+- Non-root check: `docker exec tt-dev whoami`
+  - Result: **PASS** — output was `app`, not `root`.
+- Cleanup: `docker stop tt-dev`
+  - Result: **PASS** — output was `tt-dev`.
+- No-baked-secrets check: `.dockerignore` excludes `.env`, `.env.*`,
+  `*.pem`, `*.key`, `.git`, `venv/`, `.venv/`, caches, and local build
+  artifacts. The Dockerfile copies only `requirements.txt` and `app/` into
+  the image.
+- Runtime safety check: the Dockerfile uses an explicit Python 3.11 slim
+  base, creates a dedicated `app` user, switches to `USER app` before the
+  final command, and runs Uvicorn without `--reload`.
 
-**Environment limitation — Docker build/run could not be executed by the
-AI agent:** the cloud workspace this session ran in has the `docker` CLI
-installed but no reachable Docker daemon (`docker info` errors with
-`failed to connect to the docker API at unix:///var/run/docker.sock ...
-no such file or directory`, and starting the daemon failed with
-`ulimit: error setting limit (Operation not permitted)` — the sandbox does
-not have the privileges to run a Docker daemon). The device bridge to your
-Mac runs commands inside an isolated VM that does not have `docker` on its
-`PATH` at all (`docker: command not found`), even though Docker Desktop may
-be installed and running on your actual Mac outside that VM. So the four
-commands above were not run against a real container in this session —
-they are the exact commands to run, verified against what the Dockerfile
-and `.dockerignore` actually contain, not evidence of an actual run.
-**Please run the four commands above yourself in a real terminal on your
-Mac** (not through this session) and record the actual output in this
-section before considering the final project fully evidence-complete.
+These checks satisfy the course runtime verification requirement: the image
+builds, the container runs, `/health` responds with HTTP 200, and the process
+runs as the non-root `app` user.
 
 ## Documentation claim-vs-reality log
 
