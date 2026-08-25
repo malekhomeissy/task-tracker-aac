@@ -40,30 +40,14 @@ remote service is the GitHub Actions run, which can exist only after the
 ## CI evidence
 
 - Workflow file: `.github/workflows/ci.yml`
-- Latest run link or note: **not available yet.** The AI agent working in
-  this session does not have push access to
-  `github.com/malekhomeissy/task-tracker-aac` (confirmed directly: a
-  `git push --dry-run` from the session's own git credential was rejected
-  by the git proxy with `access denied ... task-tracker-aac is not in this
-  session's authorized repository set`), so no commit from this session has
-  reached GitHub yet and no Actions run exists to link. Once `final-project`
-  is pushed (see the final report for exact push instructions), the first
-  push will trigger this workflow automatically — check
-  `github.com/malekhomeissy/task-tracker-aac/actions` and paste the green
-  run URL here.
-- Test command used by CI: `pytest tests/ -v` (same command as the local
-  baseline above — verified by reading `.github/workflows/ci.yml` directly,
-  not by assumption).
-- Shortcut check (verified by reading the actual workflow file):
-  - No `continue-on-error` anywhere in the file.
-  - No `|| true` anywhere in the file.
-  - No `--exit-zero` or similar force-success flag.
-  - Python version is pinned explicitly to `"3.11"`, not `latest`.
-  - Dependency installation (`pip install -r requirements.txt`) runs before
-    `pytest`, so missing test dependencies (`pytest`, `httpx`) aren't a
-    silent no-op.
-  - Triggers are `push` (all branches) and `pull_request` to `main`, so the
-    workflow runs on both push and PR as required.
+
+### GitHub Actions verification
+
+The `final-project` branch was pushed to the public GitHub repository and triggered the configured CI workflow.
+
+GitHub Actions run **CI #1** for commit `539c4cf` ("Record verified Docker and final release evidence") completed successfully on the `final-project` branch in 14 seconds. The workflow installed the project dependencies and ran the pytest suite as configured in `.github/workflows/ci.yml`.
+
+Result: **PASS** — GitHub Actions CI completed successfully.
 
 ## Docker evidence
 
